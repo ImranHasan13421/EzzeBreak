@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Ezze Break</string>
+    <string name="accessibility_service_description">Ezze Break uses this service only to detect foreground application changes to enforce your configured screen-time limits and break reminders. It does NOT read your screen content, passwords, or personal data.</string>
+</resources>
