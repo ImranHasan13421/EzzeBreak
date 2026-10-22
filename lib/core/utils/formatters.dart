@@ -46,6 +46,21 @@ class EzzeFormatters {
     final pct = (ratio * 100).clamp(0, 100).round();
     return '$pct%';
   }
+
+  /// Compact formatting for gauges and badges: e.g. "1h 15m", "45m", "3h", "0m"
+  static String formatCompact(int totalMinutes) {
+    if (totalMinutes <= 0) return '0m';
+    final hours = totalMinutes ~/ 60;
+    final minutes = totalMinutes % 60;
+
+    if (hours > 0) {
+      if (minutes > 0) {
+        return '${hours}h ${minutes}m';
+      }
+      return '${hours}h';
+    }
+    return '${minutes}m';
+  }
 }
 
 typedef Formatters = EzzeFormatters;

@@ -71,10 +71,10 @@ class _CircularUsageGaugeState extends State<CircularUsageGauge>
     final isOverBudget =
         widget.budgetMinutes > 0 && widget.usedMinutes >= widget.budgetMinutes;
 
-    final usedTimeStr = Formatters.formatMinutes(widget.usedMinutes);
+    final usedTimeStr = Formatters.formatCompact(widget.usedMinutes);
     final budgetTimeStr = widget.budgetMinutes > 0
-        ? Formatters.formatMinutes(widget.budgetMinutes)
-        : 'No limit';
+        ? Formatters.formatCompact(widget.budgetMinutes)
+        : '0m';
 
     return GestureDetector(
       onTap: widget.onTap,
@@ -100,30 +100,40 @@ class _CircularUsageGaugeState extends State<CircularUsageGauge>
                       isDark: isDark,
                     ),
                   ),
-                  Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        usedTimeStr,
-                        style: AppTypography.mono.copyWith(
-                          fontSize: 26,
-                          color: isOverBudget
-                              ? AppColors.error
-                              : (isDark
-                                  ? AppColors.darkTextPrimary
-                                  : AppColors.lightTextPrimary),
-                        ),
+                  Padding(
+                    padding: EdgeInsets.all(widget.strokeWidth + 14),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            usedTimeStr,
+                            style: TextStyle(
+                              fontFamily: AppTypography.primaryFont,
+                              fontSize: 32,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.5,
+                              color: isOverBudget
+                                  ? AppColors.error
+                                  : (isDark
+                                      ? AppColors.darkTextPrimary
+                                      : AppColors.lightTextPrimary),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'of $budgetTimeStr',
+                            style: AppTypography.bodySmall.copyWith(
+                              color: isDark
+                                  ? AppColors.darkTextSecondary
+                                  : AppColors.lightTextSecondary,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'of $budgetTimeStr',
-                        style: AppTypography.bodySmall.copyWith(
-                          color: isDark
-                              ? AppColors.darkTextSecondary
-                              : AppColors.lightTextSecondary,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ],
               );

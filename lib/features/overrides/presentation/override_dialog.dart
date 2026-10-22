@@ -73,99 +73,122 @@ class _OverrideDialogState extends ConsumerState<OverrideDialog> {
 
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Radii.lg)),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(Spacing.xl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AppIconView(
-              base64Icon: widget.app.iconBase64,
-              fallbackLetter: widget.app.appName,
-              size: 58,
-            ),
-            const SizedBox(height: Spacing.md),
-            Text(
-              '🔓 Override ${widget.app.appName}',
-              textAlign: TextAlign.center,
-              style: AppTypography.headlineSmall.copyWith(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: Spacing.xs),
-            Text(
-              'You have exhausted your daily allowance.',
-              textAlign: TextAlign.center,
-              style: AppTypography.bodySmall.copyWith(color: secondaryText),
-            ),
-            const SizedBox(height: Spacing.lg),
-
-            // Usage Breakdown Card
-            EzzeCard(
-              padding: const EdgeInsets.all(Spacing.md),
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Current Usage', style: AppTypography.bodySmall.copyWith(color: secondaryText)),
-                      Text(Formatters.formatMinutes(usedMinutes), style: AppTypography.titleSmall),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Daily Budget', style: AppTypography.bodySmall.copyWith(color: secondaryText)),
-                      Text(Formatters.formatMinutes(widget.budgetMinutes), style: AppTypography.titleSmall),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Over Budget By', style: AppTypography.bodySmall.copyWith(color: secondaryText)),
-                      Text(
-                        '${overMinutes}m',
-                        style: AppTypography.titleSmall.copyWith(
-                          color: AppColors.error,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+      insetPadding: const EdgeInsets.symmetric(horizontal: Spacing.lg, vertical: Spacing.xl),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(Spacing.lg),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AppIconView(
+                base64Icon: widget.app.iconBase64,
+                fallbackLetter: widget.app.appName,
+                size: 54,
               ),
-            ),
-            const SizedBox(height: Spacing.md),
-
-            // Extension Duration Selector
-            EzzeCard(
-              padding: const EdgeInsets.all(Spacing.md),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Override Duration',
-                    style: AppTypography.titleSmall.copyWith(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: Spacing.sm),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: _extensionOptions.map((mins) {
-                      final isSel = _selectedExtensionMinutes == mins;
-                      return ChoiceChip(
-                        label: Text('+$mins m'),
-                        selected: isSel,
-                        selectedColor: AppColors.brandRed.withValues(alpha: 0.18),
-                        labelStyle: TextStyle(
-                          color: isSel ? AppColors.brandRed : primaryText,
-                          fontWeight: isSel ? FontWeight.bold : FontWeight.w500,
-                        ),
-                        onSelected: (_) => setState(() => _selectedExtensionMinutes = mins),
-                      );
-                    }).toList(),
-                  ),
-                ],
+              const SizedBox(height: Spacing.sm),
+              Text(
+                '🔓 Override ${widget.app.appName}',
+                textAlign: TextAlign.center,
+                style: AppTypography.titleLarge.copyWith(fontWeight: FontWeight.bold),
               ),
-            ),
+              const SizedBox(height: Spacing.xs),
+              Text(
+                'You have exhausted your daily allowance.',
+                textAlign: TextAlign.center,
+                style: AppTypography.bodySmall.copyWith(color: secondaryText),
+              ),
+              const SizedBox(height: Spacing.md),
+
+              // Usage Breakdown Card
+              EzzeCard(
+                padding: const EdgeInsets.all(Spacing.md),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Current Usage', style: AppTypography.bodySmall.copyWith(color: secondaryText)),
+                        Text(Formatters.formatMinutes(usedMinutes), style: AppTypography.titleSmall),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Daily Budget', style: AppTypography.bodySmall.copyWith(color: secondaryText)),
+                        Text(Formatters.formatMinutes(widget.budgetMinutes), style: AppTypography.titleSmall),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Over Budget By', style: AppTypography.bodySmall.copyWith(color: secondaryText)),
+                        Text(
+                          '${overMinutes}m',
+                          style: AppTypography.titleSmall.copyWith(
+                            color: AppColors.error,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: Spacing.md),
+
+              // Extension Duration Selector
+              EzzeCard(
+                padding: const EdgeInsets.all(Spacing.md),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Override Duration',
+                      style: AppTypography.titleSmall.copyWith(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: Spacing.sm),
+                    Row(
+                      children: _extensionOptions.map((mins) {
+                        final isSel = _selectedExtensionMinutes == mins;
+                        return Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 3),
+                            child: InkWell(
+                              onTap: () => setState(() => _selectedExtensionMinutes = mins),
+                              borderRadius: BorderRadius.circular(Radii.md),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 150),
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: isSel
+                                      ? AppColors.brandRed.withValues(alpha: 0.18)
+                                      : (isDark ? AppColors.darkBg3 : AppColors.lightBg3),
+                                  borderRadius: BorderRadius.circular(Radii.md),
+                                  border: Border.all(
+                                    color: isSel ? AppColors.brandRed : Colors.transparent,
+                                    width: 1.5,
+                                  ),
+                                ),
+                                alignment: Alignment.center,
+                                child: Text(
+                                  '+$mins m',
+                                  style: AppTypography.labelMedium.copyWith(
+                                    color: isSel ? AppColors.brandRed : primaryText,
+                                    fontWeight: isSel ? FontWeight.bold : FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                ),
+              ),
             const SizedBox(height: Spacing.md),
 
             // Warning note
@@ -208,6 +231,7 @@ class _OverrideDialogState extends ConsumerState<OverrideDialog> {
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }
