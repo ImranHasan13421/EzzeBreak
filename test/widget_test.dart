@@ -13,6 +13,7 @@ import 'package:ezze_break/shared/models/monitored_app.dart';
 import 'package:ezze_break/shared/models/pin_state.dart';
 import 'package:ezze_break/features/monitoring/providers/monitoring_providers.dart';
 import 'package:ezze_break/features/splash/presentation/splash_screen.dart';
+import 'package:ezze_break/features/settings/presentation/settings_screen.dart';
 import 'test_helper.dart';
 
 class FakePinStateNotifier extends StateNotifier<AsyncValue<PinState>> implements PinStateNotifier {
@@ -191,6 +192,29 @@ void main() {
       expect(find.text('Override Duration'), findsOneWidget);
       expect(find.text('Enter PIN →'), findsOneWidget);
       expect(find.text('Cancel'), findsOneWidget);
+    });
+
+    testWidgets('SettingsScreen displays theme options, permissions, and policies', (tester) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 3.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        createTestWidget(
+          const SettingsScreen(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Settings'), findsOneWidget);
+      expect(find.text('Appearance & Theme'), findsOneWidget);
+      expect(find.text('System Permissions'), findsOneWidget);
+      expect(find.text('Usage Access'), findsOneWidget);
+      expect(find.text('Display Over Other Apps'), findsOneWidget);
+      expect(find.text('Accessibility Service'), findsOneWidget);
+      expect(find.text('Notifications'), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
   });
 }
