@@ -7,6 +7,7 @@ class NativeAppService {
 
   static Function(String packageName)? onForegroundAppChanged;
   static Function(String action, String packageName)? onPendingActionReceived;
+  static Function(String packageName, int dailySeconds, int sessionSeconds)? onUsageTick;
 
   static void initialize() {
     _channel.setMethodCallHandler((call) async {
@@ -16,6 +17,15 @@ class NativeAppService {
           final pkg = args?['packageName'] as String?;
           if (pkg != null && onForegroundAppChanged != null) {
             onForegroundAppChanged!(pkg);
+          }
+          break;
+        case 'onUsageTick':
+          final args = call.arguments as Map?;
+          final pkg = args?['packageName'] as String?;
+          final dailySec = args?['dailySeconds'] as int? ?? 0;
+          final sessionSec = args?['sessionSeconds'] as int? ?? 0;
+          if (pkg != null && onUsageTick != null) {
+            onUsageTick!(pkg, dailySec, sessionSec);
           }
           break;
         case 'onPendingAction':
@@ -125,6 +135,55 @@ class NativeAppService {
       });
     } catch (e) {
       debugPrint('Error triggering restriction: $e');
+    }
+  }
+
+  static Future<void> syncRules(List<Map<String, dynamic>> rules) async {
+    try {
+      await _channel.invokeMethod('syncRules', {'rules': rules});
+    } catch (e) {
+      debugPrint('Error syncing rules to native: $e');
+    }
+  }
+
+  static Future<void> releaseBreak(String packageName) async {
+    try {
+      await _channel.invokeMethod('releaseBreak', {'packageName': packageName});
+    } catch (e) {
+      debugPrint('Error releasing break on native: $e');
+    }
+  }
+
+  static Future<void> grantOverride(String packageName, int additionalSeconds) async {
+    try {
+      await _channel.invokeMethod('grantOverride', {
+        'packageName': packageName,
+        'additionalSeconds': additionalSeconds,
+      });
+    } catch (e) {
+      debugPrint('Error granting override on native: $e');
+    }
+  }
+
+  static Future<Map<String, int>> getNativeUsage() async {
+    try {
+      final result = await _channel.invokeMethod<Map<dynamic, dynamic>>('getNativeUsage');
+      if (result == null) return {};
+      return result.map((k, v) => MapEntry(k.toString(), (v as num).toInt()));
+    } catch (e) {
+      debugPrint('Error getting native usage: $e');
+      return {};
+    }
+  }
+
+  static Future<void> setNativeUsage(String packageName, int seconds) async {
+    try {
+      await _channel.invokeMethod('setNativeUsage', {
+        'packageName': packageName,
+        'seconds': seconds,
+      });
+    } catch (e) {
+      debugPrint('Error setting native usage: $e');
     }
   }
 

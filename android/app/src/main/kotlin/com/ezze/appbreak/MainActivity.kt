@@ -74,6 +74,17 @@ class MainActivity : FlutterActivity() {
             }
         }
 
+        // Set real-time usage tick listener from accessibility service
+        EzzeAccessibilityService.tickListener = { pkgName, dailySec, sessionSec ->
+            runOnUiThread {
+                methodChannel?.invokeMethod("onUsageTick", mapOf(
+                    "packageName" to pkgName,
+                    "dailySeconds" to dailySec,
+                    "sessionSeconds" to sessionSec
+                ))
+            }
+        }
+
         methodChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
                 "getInstalledApps" -> {
@@ -136,6 +147,32 @@ class MainActivity : FlutterActivity() {
                     startActivity(intent)
                     result.success(true)
                 }
+                "syncRules" -> {
+                    val rawRules = call.argument<List<Map<String, Any>>>("rules") ?: emptyList()
+                    EzzeRestrictionManager.syncRules(this, rawRules)
+                    result.success(true)
+                }
+                "releaseBreak" -> {
+                    val pkg = call.argument<String>("packageName") ?: ""
+                    EzzeRestrictionManager.releaseBreak(this, pkg)
+                    result.success(true)
+                }
+                "grantOverride" -> {
+                    val pkg = call.argument<String>("packageName") ?: ""
+                    val extraSec = call.argument<Int>("additionalSeconds") ?: 0
+                    EzzeRestrictionManager.grantOverride(this, pkg, extraSec)
+                    result.success(true)
+                }
+                "getNativeUsage" -> {
+                    val usage = EzzeRestrictionManager.getAllDailyUsage()
+                    result.success(usage)
+                }
+                "setNativeUsage" -> {
+                    val pkg = call.argument<String>("packageName") ?: ""
+                    val seconds = call.argument<Int>("seconds") ?: 0
+                    EzzeRestrictionManager.setDailyUsage(pkg, seconds)
+                    result.success(true)
+                }
                 "updateRestrictions" -> {
                     val rawMap = call.argument<Map<String, String>>("restrictions") ?: emptyMap()
                     EzzeRestrictionManager.updateAllRestrictions(this, rawMap)
@@ -153,9 +190,8 @@ class MainActivity : FlutterActivity() {
                     result.success(true)
                 }
                 "getUsageStats" -> {
-                    val startTime = call.argument<Long>("startTime") ?: 0L
-                    val endTime = call.argument<Long>("endTime") ?: System.currentTimeMillis()
-                    val stats = queryUsageStats(startTime, endTime)
+                    // Independent offline app: return native Ezze tracked stats, never Android Digital Wellbeing
+                    val stats = EzzeRestrictionManager.getAllDailyUsage()
                     result.success(stats)
                 }
                 "savePdfToDownloads" -> {
