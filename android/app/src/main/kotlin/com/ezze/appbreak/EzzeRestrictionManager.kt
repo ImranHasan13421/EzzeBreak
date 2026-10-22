@@ -9,6 +9,7 @@ import java.util.Locale
 object EzzeRestrictionManager {
     private const val PREFS_NAME = "ezze_break_restrictions"
     private const val KEY_RESTRICTED_PACKAGES = "restricted_packages"
+    private const val KEY_MONITORED_RULES = "monitored_rules_cache"
     private const val KEY_LAST_DATE = "last_date_key"
     private const val PREF_USAGE_PREFIX = "usage_today_"
 
@@ -61,6 +62,8 @@ object EzzeRestrictionManager {
                         dailyUsageSeconds[pkg] = value
                     }
                 }
+                // Restore cached rules
+                restoreRules(prefs)
             } else {
                 // Past 12:00 AM midnight! Reset all restrictions and daily stats for fresh new day
                 performMidnightReset(context, today)
@@ -68,10 +71,31 @@ object EzzeRestrictionManager {
         }
     }
 
-    /**
-     * Checks if calendar day has crossed midnight (12:00 AM).
-     * If so, clears all restrictions and resets daily usage to 0 immediately.
-     */
+    private fun restoreRules(prefs: SharedPreferences) {
+        synchronized(monitoredRules) {
+            val set = prefs.getStringSet(KEY_MONITORED_RULES, emptySet()) ?: emptySet()
+            for (item in set) {
+                val parts = item.split("|")
+                if (parts.size >= 6) {
+                    val pkg = parts[0]
+                    val sess = parts[1].toIntOrNull() ?: (20 * 60)
+                    val budget = parts[2].toIntOrNull() ?: (60 * 60)
+                    val brk = parts[3].toIntOrNull() ?: (5 * 60)
+                    val add = parts[4].toIntOrNull() ?: 0
+                    val isMon = parts[5].toBoolean()
+                    monitoredRules[pkg] = AppRuleConfig(
+                        packageName = pkg,
+                        sessionLimitSeconds = sess,
+                        dailyBudgetSeconds = budget,
+                        breakDurationSeconds = brk,
+                        additionalSeconds = add,
+                        isMonitored = isMon
+                    )
+                }
+            }
+        }
+    }
+
     fun checkDateRollover(context: Context): Boolean {
         val today = getTodayDateKey()
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -90,7 +114,6 @@ object EzzeRestrictionManager {
             continuousSessionSeconds = 0
             activeMonitoredPackage = null
 
-            // Reset rules additionalSeconds
             for (rule in monitoredRules.values) {
                 rule.additionalSeconds = 0
             }
@@ -98,7 +121,6 @@ object EzzeRestrictionManager {
 
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val editor = prefs.edit()
-        // Clear all usage keys
         for (key in prefs.all.keys) {
             if (key.startsWith(PREF_USAGE_PREFIX) || key == KEY_RESTRICTED_PACKAGES) {
                 editor.remove(key)
@@ -130,6 +152,7 @@ object EzzeRestrictionManager {
                 )
             }
         }
+        persist(context)
     }
 
     fun getRule(packageName: String): AppRuleConfig? {
@@ -170,7 +193,6 @@ object EzzeRestrictionManager {
         }
         continuousSessionSeconds++
 
-        // Persist every 10 seconds to save I/O
         if (continuousSessionSeconds % 10 == 0) {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             val current = dailyUsageSeconds[packageName] ?: 0
@@ -180,9 +202,7 @@ object EzzeRestrictionManager {
 
     fun releaseBreak(context: Context, packageName: String) {
         synchronized(restrictedApps) {
-            if (restrictedApps[packageName] == "break") {
-                restrictedApps.remove(packageName)
-            }
+            restrictedApps.remove(packageName)
             continuousSessionSeconds = 0
         }
         persist(context)
@@ -196,9 +216,8 @@ object EzzeRestrictionManager {
             }
         }
         synchronized(restrictedApps) {
-            if (restrictedApps[packageName] == "limit_over") {
-                restrictedApps.remove(packageName)
-            }
+            restrictedApps.remove(packageName)
+            continuousSessionSeconds = 0
         }
         persist(context)
     }
@@ -213,6 +232,7 @@ object EzzeRestrictionManager {
     fun clearRestriction(context: Context, packageName: String) {
         synchronized(restrictedApps) {
             restrictedApps.remove(packageName)
+            continuousSessionSeconds = 0
         }
         persist(context)
     }
@@ -244,7 +264,18 @@ object EzzeRestrictionManager {
                 set.add("$pkg:$reason")
             }
         }
+
+        val rulesSet = mutableSetOf<String>()
+        synchronized(monitoredRules) {
+            for (rule in monitoredRules.values) {
+                rulesSet.add("${rule.packageName}|${rule.sessionLimitSeconds}|${rule.dailyBudgetSeconds}|${rule.breakDurationSeconds}|${rule.additionalSeconds}|${rule.isMonitored}")
+            }
+        }
+
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit().putStringSet(KEY_RESTRICTED_PACKAGES, set).apply()
+        prefs.edit()
+            .putStringSet(KEY_RESTRICTED_PACKAGES, set)
+            .putStringSet(KEY_MONITORED_RULES, rulesSet)
+            .apply()
     }
 }

@@ -15,10 +15,13 @@ class EzzeAccessibilityService : AccessibilityService() {
             private set
         var foregroundListener: ((String) -> Unit)? = null
         var tickListener: ((String, Int, Int) -> Unit)? = null
+        var instance: EzzeAccessibilityService? = null
+            private set
     }
 
     private val handler = Handler(Looper.getMainLooper())
     private var isTickerStarted = false
+    private var lastRestrictionLaunchTime = 0L
 
     private val tickerRunnable = object : Runnable {
         override fun run() {
@@ -31,6 +34,7 @@ class EzzeAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        instance = this
         isServiceRunning = true
         EzzeRestrictionManager.init(applicationContext)
 
@@ -47,12 +51,15 @@ class EzzeAccessibilityService : AccessibilityService() {
 
         val packageName = event.packageName?.toString() ?: return
 
-        // Skip Ezze Break itself and its activities
+        // 1. Skip and track Ezze Break itself and its activities
         if (packageName == applicationContext.packageName || packageName == "com.ezze.break") {
+            currentForegroundPackage = packageName
+            EzzeRestrictionManager.continuousSessionSeconds = 0
+            foregroundListener?.invoke(packageName)
             return
         }
 
-        // Never restrict critical system utilities, settings or dialers
+        // 2. Never restrict critical system utilities, settings or dialers
         if (packageName == "com.android.settings" ||
             packageName == "com.google.android.settings" ||
             packageName == "com.android.dialer" ||
@@ -63,6 +70,7 @@ class EzzeAccessibilityService : AccessibilityService() {
         ) {
             currentForegroundPackage = packageName
             EzzeRestrictionManager.continuousSessionSeconds = 0
+            foregroundListener?.invoke(packageName)
             return
         }
 
@@ -74,9 +82,10 @@ class EzzeAccessibilityService : AccessibilityService() {
             foregroundListener?.invoke(packageName)
         }
 
-        // Check if package is already marked as restricted
+        // 3. If package is restricted, block access immediately and return home
         if (EzzeRestrictionManager.isRestricted(packageName)) {
             val reason = EzzeRestrictionManager.getReason(packageName)
+            performGlobalAction(GLOBAL_ACTION_HOME)
             launchRestriction(packageName, reason)
         }
     }
@@ -87,8 +96,15 @@ class EzzeAccessibilityService : AccessibilityService() {
 
         val pkg = currentForegroundPackage ?: return
 
-        // Skip Ezze Break itself or system apps
-        if (pkg == applicationContext.packageName || pkg == "com.ezze.break") {
+        // Never count time or restrict Ezze Break itself or system apps
+        if (pkg == applicationContext.packageName ||
+            pkg == "com.ezze.break" ||
+            pkg.contains("systemui") ||
+            pkg == "com.android.settings" ||
+            pkg == "com.google.android.settings" ||
+            pkg == "com.android.dialer" ||
+            pkg == "com.google.android.dialer"
+        ) {
             return
         }
 
@@ -97,9 +113,10 @@ class EzzeAccessibilityService : AccessibilityService() {
             return
         }
 
-        // 2. If already restricted, enforce restriction overlay
+        // 2. If already marked restricted, enforce block immediately and close app
         if (EzzeRestrictionManager.isRestricted(pkg)) {
             val reason = EzzeRestrictionManager.getReason(pkg)
+            performGlobalAction(GLOBAL_ACTION_HOME)
             launchRestriction(pkg, reason)
             return
         }
@@ -115,23 +132,31 @@ class EzzeAccessibilityService : AccessibilityService() {
 
         val rule = EzzeRestrictionManager.getRule(pkg) ?: return
 
-        // 4. Check continuous session break limit
-        if (rule.sessionLimitSeconds > 0 && continuousUsed >= rule.sessionLimitSeconds) {
-            EzzeRestrictionManager.setRestriction(applicationContext, pkg, "break")
-            launchRestriction(pkg, "break")
-            return
-        }
-
-        // 5. Check daily budget limit
+        // 4. Daily budget limit check (Highest priority: daily budget exhaustion)
         val totalBudget = rule.dailyBudgetSeconds + rule.additionalSeconds
         if (totalBudget > 0 && dailyUsed >= totalBudget) {
             EzzeRestrictionManager.setRestriction(applicationContext, pkg, "limit_over")
+            performGlobalAction(GLOBAL_ACTION_HOME)
             launchRestriction(pkg, "limit_over")
+            return
+        }
+
+        // 5. Continuous session break limit check (e.g. 15m continuous usage)
+        if (rule.sessionLimitSeconds > 0 && continuousUsed >= rule.sessionLimitSeconds) {
+            EzzeRestrictionManager.setRestriction(applicationContext, pkg, "break")
+            performGlobalAction(GLOBAL_ACTION_HOME)
+            launchRestriction(pkg, "break")
             return
         }
     }
 
-    private fun launchRestriction(packageName: String, reason: String) {
+    fun launchRestriction(packageName: String, reason: String) {
+        val now = System.currentTimeMillis()
+        if (now - lastRestrictionLaunchTime < 1200) {
+            return
+        }
+        lastRestrictionLaunchTime = now
+
         val intent = Intent(this, RestrictionActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra(RestrictionActivity.EXTRA_PACKAGE_NAME, packageName)
@@ -144,6 +169,7 @@ class EzzeAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        instance = null
         isServiceRunning = false
         handler.removeCallbacks(tickerRunnable)
         isTickerStarted = false

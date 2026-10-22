@@ -1,6 +1,7 @@
 package com.ezze.appbreak
 
 import android.Manifest
+import android.accessibilityservice.AccessibilityService
 import android.app.AppOpsManager
 import android.content.ContentValues
 import android.content.Context
@@ -181,6 +182,9 @@ class MainActivity : FlutterActivity() {
                 "triggerRestriction" -> {
                     val targetPackage = call.argument<String>("packageName") ?: ""
                     val reason = call.argument<String>("reason") ?: "break"
+                    try {
+                        EzzeAccessibilityService.instance?.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
+                    } catch (_: Exception) {}
                     val intent = Intent(this, RestrictionActivity::class.java).apply {
                         flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                         putExtra(RestrictionActivity.EXTRA_PACKAGE_NAME, targetPackage)
