@@ -32,24 +32,25 @@ void main() {
       }
     });
 
-    test('PIN maintains 24-hour validity window with deterministic clock', () async {
+    test('PIN maintains validity until 12:00 AM midnight with deterministic clock', () async {
       final state1 = await pinService.getCurrentPinState();
       expect(state1.currentPin.length, 8);
       expect(state1.windowStart, simulatedTime);
-      expect(state1.windowExpires, simulatedTime.add(const Duration(hours: 24)));
+      final expectedMidnight = DateTime(simulatedTime.year, simulatedTime.month, simulatedTime.day + 1, 0, 0, 0);
+      expect(state1.windowExpires, expectedMidnight);
 
-      // Advance clock by 12 hours (within 24-hour window)
+      // Advance clock by 12 hours (to 10:00 PM, before midnight)
       simulatedTime = simulatedTime.add(const Duration(hours: 12));
       final state2 = await pinService.getCurrentPinState();
       // Should remain the same PIN
       expect(state2.currentPin, state1.currentPin);
 
-      // Advance clock beyond 24 hours
-      simulatedTime = simulatedTime.add(const Duration(hours: 13)); // Total 25 hours elapsed
+      // Advance clock past 12:00 AM midnight (to 12:30 AM next day)
+      simulatedTime = DateTime(2026, 10, 21, 0, 30, 0);
       final state3 = await pinService.getCurrentPinState();
-      // Should have generated new PIN for new 24h window
+      // Should have generated new PIN expiring at next midnight
       expect(state3.windowStart, simulatedTime);
-      expect(state3.windowExpires, simulatedTime.add(const Duration(hours: 24)));
+      expect(state3.windowExpires, DateTime(2026, 10, 22, 0, 0, 0));
     });
 
     test('validatePin validates matching PIN and rejects incorrect PIN', () async {
@@ -82,13 +83,13 @@ void main() {
       expect(pinService.isLockedOut(), isFalse);
     });
 
-    test('rotatePinNow forces immediate PIN rotation', () async {
+    test('rotatePinNow forces immediate PIN rotation expiring at midnight', () async {
       final state1 = await pinService.getCurrentPinState();
       final state2 = await pinService.rotatePinNow();
 
       expect(state1.currentPin, isNotEmpty);
       expect(state2.windowStart, simulatedTime);
-      expect(state2.windowExpires, simulatedTime.add(const Duration(hours: 24)));
+      expect(state2.windowExpires, DateTime(simulatedTime.year, simulatedTime.month, simulatedTime.day + 1, 0, 0, 0));
     });
   });
 }

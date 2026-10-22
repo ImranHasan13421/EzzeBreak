@@ -40,12 +40,13 @@ class PinService {
       return fromDb;
     }
 
-    // Window has expired or no PIN exists: generate new 8-digit PIN for 24-hour window
+    // Window has expired or no PIN exists: generate new 8-digit PIN expiring at 12:00 AM midnight
+    final nextMidnight = DateTime(now.year, now.month, now.day + 1, 0, 0, 0);
     final newPin = generateSecurePin();
     final newPinState = PinState(
       currentPin: newPin,
       windowStart: now,
-      windowExpires: now.add(const Duration(hours: 24)),
+      windowExpires: nextMidnight,
       updatedAt: now,
     );
 
@@ -101,11 +102,12 @@ class PinService {
   /// Force-rotates the PIN (for testing or user reset with confirmation)
   Future<PinState> rotatePinNow() async {
     final now = _clock();
+    final nextMidnight = DateTime(now.year, now.month, now.day + 1, 0, 0, 0);
     final newPin = generateSecurePin();
     final newPinState = PinState(
       currentPin: newPin,
       windowStart: now,
-      windowExpires: now.add(const Duration(hours: 24)),
+      windowExpires: nextMidnight,
       updatedAt: now,
     );
 
