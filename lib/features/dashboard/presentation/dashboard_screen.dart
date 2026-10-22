@@ -203,18 +203,21 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
     int totalSecondsToday = 0;
     int totalBudgetMinutes = 0;
+    final activeMonitoredApps = apps.where((a) => a.isMonitored).toList();
 
-    for (final app in apps.where((a) => a.isMonitored)) {
+    for (final app in activeMonitoredApps) {
       final usage = todayUsages[app.packageName];
       if (usage != null) {
         totalSecondsToday += usage.accumulatedSeconds;
       }
       final rule = rules[app.packageName];
-      totalBudgetMinutes += rule?.dailyBudgetMinutes ?? 60;
+      final baseBudget = rule?.dailyBudgetMinutes ?? 60;
+      final extraMins = (usage?.additionalSeconds ?? 0) ~/ 60;
+      totalBudgetMinutes += (baseBudget + extraMins);
     }
 
-    if (totalBudgetMinutes == 0) {
-      totalBudgetMinutes = 180; // default 3 hours fallback
+    if (totalBudgetMinutes == 0 && activeMonitoredApps.isEmpty) {
+      totalBudgetMinutes = 0;
     }
 
     final totalMinutesToday = totalSecondsToday ~/ 60;
@@ -520,10 +523,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   final rule = rules[app.packageName];
                   final daily = todayUsages[app.packageName];
                   final usedSec = daily?.accumulatedSeconds ?? 0;
-                  final budgetMins = rule?.dailyBudgetMinutes ?? 60;
+                  final baseBudgetMins = rule?.dailyBudgetMinutes ?? 60;
+                  final extraMins = (daily?.additionalSeconds ?? 0) ~/ 60;
+                  final effectiveBudgetMins = baseBudgetMins + extraMins;
+                  final totalAllowanceSec = effectiveBudgetMins * 60;
                   final sessionMins = rule?.sessionLimitMinutes ?? 20;
-                  final isOver = daily?.isOverBudget ?? false;
-                  final ratio = (daily?.usageRatio ?? 0.0).clamp(0.0, 1.0);
+                  final isOver = totalAllowanceSec > 0 && usedSec >= totalAllowanceSec;
+                  final ratio = totalAllowanceSec > 0 ? (usedSec / totalAllowanceSec).clamp(0.0, 1.0) : 0.0;
+                  final remainingSec = (totalAllowanceSec - usedSec).clamp(0, totalAllowanceSec);
 
                   return Padding(
                     padding: const EdgeInsets.only(bottom: Spacing.md),
@@ -536,7 +543,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           ),
                         );
                       },
-                      onLongPress: () => _showAppContextMenu(app, usedSec, budgetMins),
+                      onLongPress: () => _showAppContextMenu(app, usedSec, effectiveBudgetMins),
                       child: Column(
                         children: [
                           Row(
@@ -560,7 +567,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                     ),
                                     const SizedBox(height: 2),
                                     Text(
-                                      '${Formatters.formatSeconds(usedSec)} of ${Formatters.formatMinutes(budgetMins)}',
+                                      '${Formatters.formatSeconds(usedSec)} of ${Formatters.formatCompact(effectiveBudgetMins)}',
                                       style: AppTypography.bodySmall.copyWith(
                                         color: isOver ? AppColors.error : secondaryText,
                                         fontWeight: isOver ? FontWeight.bold : FontWeight.normal,
@@ -610,7 +617,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                       builder: (_) => OverrideDialog(
                                         app: app,
                                         usageSeconds: usedSec,
-                                        budgetMinutes: budgetMins,
+                                        budgetMinutes: effectiveBudgetMins,
                                       ),
                                     );
                                   },
@@ -624,7 +631,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                 )
                               else
                                 Text(
-                                  '${Formatters.formatMinutes(budgetMins - (usedSec ~/ 60))} remaining',
+                                  '${Formatters.formatSeconds(remainingSec)} remaining',
                                   style: AppTypography.bodySmall.copyWith(
                                     color: AppColors.brandRed,
                                     fontWeight: FontWeight.w600,

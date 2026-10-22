@@ -1,11 +1,42 @@
+import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:ezze_break/core/database/app_database.dart';
+import 'package:flutter/services.dart';
+import 'package:ezze_break/core/constants/app_constants.dart';
 
 Database? _previousTestDb;
 
 Future<AppDatabase> setupTestDatabase() async {
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
+
+  TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+      .setMockMethodCallHandler(
+    const MethodChannel(AppConstants.channelName),
+    (MethodCall call) async {
+      switch (call.method) {
+        case 'updateRestrictions':
+        case 'triggerRestriction':
+        case 'syncRules':
+        case 'releaseBreak':
+        case 'grantOverride':
+        case 'setNativeUsage':
+          return true;
+        case 'getNativeUsage':
+        case 'getUsageStats':
+          return <String, int>{};
+        case 'getInstalledApps':
+          return <Map<String, dynamic>>[];
+        case 'checkUsagePermission':
+        case 'checkOverlayPermission':
+        case 'checkAccessibilityPermission':
+        case 'checkNotificationPermission':
+          return true;
+        default:
+          return null;
+      }
+    },
+  );
 
   if (_previousTestDb != null && _previousTestDb!.isOpen) {
     try {

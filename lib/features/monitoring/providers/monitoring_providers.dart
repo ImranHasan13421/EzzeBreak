@@ -100,16 +100,19 @@ class MonitoredAppsNotifier extends StateNotifier<List<MonitoredApp>> {
     await _db.upsertMonitoredApp(app);
     await _db.upsertRule(rule);
     await loadApps();
+    await UsageMonitorService.instance.syncRulesToNative();
   }
 
   Future<void> toggleMonitoring(String packageName, bool isMonitored) async {
     await _db.setAppMonitoredStatus(packageName, isMonitored);
     await loadApps();
+    await UsageMonitorService.instance.syncRulesToNative();
   }
 
   Future<void> removeApp(String packageName) async {
     await _db.removeMonitoredApp(packageName);
     await loadApps();
+    await UsageMonitorService.instance.syncRulesToNative();
   }
 }
 
@@ -136,6 +139,7 @@ class AppRulesNotifier extends StateNotifier<Map<String, AppRule>> {
     await _db.upsertRule(rule);
     if (!mounted) return;
     state = {...state, rule.packageName: rule};
+    await UsageMonitorService.instance.syncRulesToNative();
   }
 }
 

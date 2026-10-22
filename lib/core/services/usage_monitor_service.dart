@@ -64,12 +64,81 @@ class UsageMonitorService {
       handleForegroundChange(pkg);
     };
 
-    // Initial sync
-    syncUsageWithGroundTruth();
+    NativeAppService.onUsageTick = (pkg, dailySec, sessionSec) async {
+      final today = EzzeDateUtils.todayKey();
+      final current = await _db.getDailyUsage(pkg, today);
+      final delta = dailySec - (current?.accumulatedSeconds ?? 0);
+      if (delta > 0) {
+        final rule = await _db.getRule(pkg);
+        await _db.recordUsageSeconds(
+          pkg,
+          today,
+          delta,
+          defaultAllowanceMinutes: rule?.dailyBudgetMinutes ?? 60,
+        );
+        _updateController.add(null);
+      }
+    };
+
+    // Initial sync of rules and state with native tracking
+    syncRulesToNative();
+    pullUsageFromNative();
   }
 
   void stop() {
     _ticker?.cancel();
+  }
+
+  Future<void> syncRulesToNative() async {
+    try {
+      final apps = await _db.getAllMonitoredApps();
+      final now = _clock();
+      final today = EzzeDateUtils.dateKey(now);
+      final rulesPayload = <Map<String, dynamic>>[];
+      for (final app in apps) {
+        final rule = await _db.getRule(app.packageName);
+        final daily = await _db.getDailyUsage(app.packageName, today);
+        rulesPayload.add({
+          'packageName': app.packageName,
+          'sessionLimitMinutes': rule?.sessionLimitMinutes ?? 20,
+          'dailyBudgetMinutes': rule?.dailyBudgetMinutes ?? 60,
+          'breakDurationMinutes': rule?.breakDurationMinutes ?? 5,
+          'additionalSeconds': daily?.additionalSeconds ?? 0,
+          'isMonitored': app.isMonitored,
+        });
+      }
+      await NativeAppService.syncRules(rulesPayload);
+    } catch (e) {
+      debugPrint('Error syncing rules to native: $e');
+    }
+  }
+
+  Future<void> pullUsageFromNative() async {
+    try {
+      final nativeUsage = await NativeAppService.getNativeUsage();
+      final now = _clock();
+      final today = EzzeDateUtils.dateKey(now);
+      for (final entry in nativeUsage.entries) {
+        final pkg = entry.key;
+        final sec = entry.value;
+        final current = await _db.getDailyUsage(pkg, today);
+        final currentSec = current?.accumulatedSeconds ?? 0;
+        if (sec > currentSec) {
+          final rule = await _db.getRule(pkg);
+          await _db.recordUsageSeconds(
+            pkg,
+            today,
+            sec - currentSec,
+            defaultAllowanceMinutes: rule?.dailyBudgetMinutes ?? 60,
+          );
+        } else if (currentSec > sec) {
+          await NativeAppService.setNativeUsage(pkg, currentSec);
+        }
+      }
+      _updateController.add(null);
+    } catch (e) {
+      debugPrint('Error pulling native usage: $e');
+    }
   }
 
   Future<void> handleForegroundChange(String newPackage) async {
@@ -82,7 +151,7 @@ class UsageMonitorService {
         final prevPkg = _foregroundPackage!;
         final rule = await _db.getRule(prevPkg);
         if (rule != null && rule.isEnabled) {
-          final today = EzzeDateUtils.todayKey();
+          final today = EzzeDateUtils.dateKey(now);
           await _db.recordUsageSeconds(
             prevPkg,
             today,
@@ -120,8 +189,9 @@ class UsageMonitorService {
     _sessionSeconds++;
 
     // Every 10 seconds, flush accumulated seconds to DB so stats are real-time
+    final now = _clock();
     if (_sessionSeconds % 10 == 0) {
-      final today = EzzeDateUtils.todayKey();
+      final today = EzzeDateUtils.dateKey(now);
       await _db.recordUsageSeconds(
         pkg,
         today,
@@ -139,13 +209,13 @@ class UsageMonitorService {
     final rule = await _db.getRule(packageName);
     if (rule == null || !rule.isEnabled) return;
 
-    final today = EzzeDateUtils.todayKey();
+    final now = _clock();
+    final today = EzzeDateUtils.dateKey(now);
     final daily = await _db.getDailyUsage(packageName, today);
     final accumulatedSeconds = daily?.accumulatedSeconds ?? 0;
     final totalAllowanceSeconds = (daily?.totalAllowanceSeconds ?? (rule.dailyBudgetMinutes * 60));
 
     // Check for active override
-    final now = _clock();
     final activeOverride = await _db.getActiveOverride(packageName, now);
 
     // 1. Daily limit check
@@ -178,11 +248,11 @@ class UsageMonitorService {
     final isValid = await _pinService.validatePin(pin);
     if (!isValid) return false;
 
+    final now = _clock();
     final rule = await _db.getRule(packageName);
-    final today = EzzeDateUtils.todayKey();
+    final today = EzzeDateUtils.dateKey(now);
     final daily = await _db.getDailyUsage(packageName, today);
 
-    final now = _clock();
     final expiresAt = now.add(Duration(minutes: extensionMinutes));
 
     final override = OverrideLog(
@@ -197,8 +267,8 @@ class UsageMonitorService {
     await _db.recordOverride(override);
     await _db.addOverrideSeconds(packageName, today, extensionMinutes * 60);
 
-    // Clear restriction
-    await NativeAppService.updateRestrictions({});
+    // Update native with extra time and clear limit restriction
+    await NativeAppService.grantOverride(packageName, extensionMinutes * 60);
     _updateController.add(null);
     return true;
   }
@@ -207,43 +277,13 @@ class UsageMonitorService {
   Future<void> releaseBreak(String packageName) async {
     _sessionSeconds = 0;
     _sessionStartTime = _clock();
-    await NativeAppService.updateRestrictions({});
+    await NativeAppService.releaseBreak(packageName);
     _updateController.add(null);
   }
 
-  /// Syncs daily usage from Android's UsageStatsManager ground truth
+  /// Pulls live usage from Ezze's native internal tracker (independent from Android Digital Wellbeing)
   Future<void> syncUsageWithGroundTruth() async {
-    try {
-      final now = _clock();
-      final startOfDay = EzzeDateUtils.startOfDay(now).millisecondsSinceEpoch;
-      final endOfDay = now.millisecondsSinceEpoch;
-
-      final nativeStats = await NativeAppService.getUsageStats(startOfDay, endOfDay);
-      final monitoredApps = await _db.getAllMonitoredApps(activeOnly: true);
-      final today = EzzeDateUtils.todayKey();
-
-      for (final app in monitoredApps) {
-        final groundTruthMillis = nativeStats[app.packageName];
-        if (groundTruthMillis != null && groundTruthMillis > 0) {
-          final groundTruthSeconds = (groundTruthMillis / 1000).round();
-          final current = await _db.getDailyUsage(app.packageName, today);
-          if (current == null || current.accumulatedSeconds < groundTruthSeconds) {
-            final diff = groundTruthSeconds - (current?.accumulatedSeconds ?? 0);
-            final rule = await _db.getRule(app.packageName);
-            if (diff > 0) {
-              await _db.recordUsageSeconds(
-                app.packageName,
-                today,
-                diff,
-                defaultAllowanceMinutes: rule?.dailyBudgetMinutes ?? 60,
-              );
-            }
-          }
-        }
-      }
-      _updateController.add(null);
-    } catch (e) {
-      debugPrint('Sync usage error: $e');
-    }
+    await pullUsageFromNative();
+    await syncRulesToNative();
   }
 }
