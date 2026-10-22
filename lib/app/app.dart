@@ -35,7 +35,9 @@ class EzzeBreakApp extends ConsumerWidget {
 }
 
 class MainNavigationLayout extends ConsumerStatefulWidget {
-  const MainNavigationLayout({super.key});
+  final Map<String, String>? initialPendingAction;
+
+  const MainNavigationLayout({super.key, this.initialPendingAction});
 
   @override
   ConsumerState<MainNavigationLayout> createState() => _MainNavigationLayoutState();
@@ -43,6 +45,9 @@ class MainNavigationLayout extends ConsumerStatefulWidget {
 
 class _MainNavigationLayoutState extends ConsumerState<MainNavigationLayout> {
   int _currentIndex = 0;
+  String? _lastActionKey;
+  DateTime? _lastActionTime;
+  bool _isOverrideDialogOpen = false;
 
   final List<Widget> _destinations = const [
     DashboardScreen(),
@@ -60,6 +65,14 @@ class _MainNavigationLayoutState extends ConsumerState<MainNavigationLayout> {
     };
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (widget.initialPendingAction != null) {
+        final act = widget.initialPendingAction!['action'] ?? '';
+        final p = widget.initialPendingAction!['packageName'] ?? '';
+        if (act.isNotEmpty && p.isNotEmpty) {
+          _handleAction(act, p);
+          return;
+        }
+      }
       final pending = await NativeAppService.getPendingAction();
       if (pending != null && mounted) {
         _handleAction(pending['action'] ?? '', pending['packageName'] ?? '');
@@ -68,29 +81,46 @@ class _MainNavigationLayoutState extends ConsumerState<MainNavigationLayout> {
   }
 
   void _handleAction(String action, String pkg) {
-    if (action == 'START_BREAK' && pkg.isNotEmpty) {
+    if (action.isEmpty || pkg.isEmpty) return;
+    final key = '$action:$pkg';
+    final now = DateTime.now();
+    if (_lastActionKey == key &&
+        _lastActionTime != null &&
+        now.difference(_lastActionTime!).inMilliseconds < 1800) {
+      return;
+    }
+    _lastActionKey = key;
+    _lastActionTime = now;
+
+    if (action == 'START_BREAK') {
       Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => BreakScreen(packageName: pkg)),
       );
-    } else if (action == 'START_OVERRIDE' && pkg.isNotEmpty) {
+    } else if (action == 'START_OVERRIDE') {
       _openOverrideDialog(pkg);
     }
   }
 
   void _openOverrideDialog(String pkg) async {
-    final db = ref.read(databaseProvider);
-    final app = await db.getMonitoredApp(pkg);
-    final rule = await db.getRule(pkg);
-    final usage = await db.getDailyUsage(pkg, EzzeDateUtils.todayKey());
-    if (app != null && rule != null && mounted) {
-      showDialog(
-        context: context,
-        builder: (_) => OverrideDialog(
-          app: app,
-          usageSeconds: usage?.accumulatedSeconds ?? 0,
-          budgetMinutes: rule.dailyBudgetMinutes,
-        ),
-      );
+    if (_isOverrideDialogOpen) return;
+    _isOverrideDialogOpen = true;
+    try {
+      final db = ref.read(databaseProvider);
+      final app = await db.getMonitoredApp(pkg);
+      final rule = await db.getRule(pkg);
+      final usage = await db.getDailyUsage(pkg, EzzeDateUtils.todayKey());
+      if (app != null && rule != null && mounted) {
+        await showDialog(
+          context: context,
+          builder: (_) => OverrideDialog(
+            app: app,
+            usageSeconds: usage?.accumulatedSeconds ?? 0,
+            budgetMinutes: rule.dailyBudgetMinutes,
+          ),
+        );
+      }
+    } finally {
+      _isOverrideDialogOpen = false;
     }
   }
 

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../app/app.dart';
+import '../../../core/platform/native_app_service.dart';
 import '../../../app/theme/app_colors.dart';
 import '../../../app/theme/app_spacing.dart';
 import '../../../app/theme/app_typography.dart';
@@ -84,6 +85,21 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
       await ref.read(permissionsProvider.notifier).checkAll();
     } catch (_) {}
 
+    final pending = await NativeAppService.getPendingAction();
+    final onboardingDone = ref.read(onboardingCompletedProvider);
+
+    if (pending != null && mounted) {
+      // Immediate navigate if incoming from restriction screen
+      Navigator.of(context).pushReplacement(
+        PageRouteBuilder(
+          transitionDuration: Duration.zero,
+          pageBuilder: (context, animation, secondaryAnimation) =>
+              MainNavigationLayout(initialPendingAction: pending),
+        ),
+      );
+      return;
+    }
+
     final elapsed = DateTime.now().difference(startTime).inMilliseconds;
     const minSplashDurationMs = 1500;
     final remainingDelay = minSplashDurationMs - elapsed;
@@ -98,8 +114,6 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     await Future.delayed(const Duration(milliseconds: 200));
 
     if (!mounted) return;
-
-    final onboardingDone = ref.read(onboardingCompletedProvider);
 
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(

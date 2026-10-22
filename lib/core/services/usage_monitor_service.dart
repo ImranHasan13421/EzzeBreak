@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import '../constants/app_constants.dart';
 import '../database/app_database.dart';
 import '../platform/native_app_service.dart';
 import '../utils/date_utils.dart';
@@ -65,6 +66,13 @@ class UsageMonitorService {
     };
 
     NativeAppService.onUsageTick = (pkg, dailySec, sessionSec) async {
+      if (pkg == AppConstants.appPackage || 
+          pkg == 'com.ezze.appbreak' || 
+          pkg.contains('systemui') ||
+          pkg == 'com.android.settings' ||
+          pkg == 'com.google.android.settings') {
+        return;
+      }
       final today = EzzeDateUtils.todayKey();
       final current = await _db.getDailyUsage(pkg, today);
       final delta = dailySec - (current?.accumulatedSeconds ?? 0);
@@ -144,8 +152,13 @@ class UsageMonitorService {
   Future<void> handleForegroundChange(String newPackage) async {
     final now = _clock();
 
-    // 1. Flush previous foreground session if monitored
-    if (_foregroundPackage != null && _sessionStartTime != null) {
+    // 1. Flush previous foreground session if monitored (and not Ezze Break)
+    if (_foregroundPackage != null && 
+        _foregroundPackage != newPackage &&
+        _foregroundPackage != AppConstants.appPackage &&
+        _foregroundPackage != 'com.ezze.appbreak' &&
+        !_foregroundPackage!.contains('systemui') &&
+        _sessionStartTime != null) {
       final elapsed = now.difference(_sessionStartTime!).inSeconds;
       if (elapsed > 0) {
         final prevPkg = _foregroundPackage!;
@@ -171,6 +184,19 @@ class UsageMonitorService {
 
     // 2. Start new session
     _foregroundPackage = newPackage;
+
+    // If new package is Ezze Break or system UI, do not start session timing
+    if (newPackage == AppConstants.appPackage || 
+        newPackage == 'com.ezze.appbreak' ||
+        newPackage.contains('systemui') ||
+        newPackage == 'com.android.settings' ||
+        newPackage == 'com.google.android.settings') {
+      _sessionStartTime = null;
+      _sessionSeconds = 0;
+      _updateController.add(null);
+      return;
+    }
+
     _sessionStartTime = now;
     _sessionSeconds = 0;
 
@@ -180,7 +206,13 @@ class UsageMonitorService {
   }
 
   void _onTick(Timer timer) async {
-    if (_foregroundPackage == null) return;
+    if (_foregroundPackage == null ||
+        _foregroundPackage == AppConstants.appPackage ||
+        _foregroundPackage == 'com.ezze.appbreak' ||
+        _foregroundPackage!.contains('systemui') ||
+        _sessionStartTime == null) {
+      return;
+    }
     final pkg = _foregroundPackage!;
 
     final rule = await _db.getRule(pkg);

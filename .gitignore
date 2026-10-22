@@ -49,3 +49,5 @@ app.*.map.json
 /screen_test*.png
 /screen_device_current.png
 /test_*.pdf
+*.mp4
+*.mkv
